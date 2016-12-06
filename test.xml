@@ -1,0 +1,24 @@
+<camotics>
+  <!-- Note, all values are in mm regardless of 'units' option. -->
+  <!-- NC Files -->
+  <nc-files>
+    test.nc
+  </nc-files>
+
+  <!-- Project -->
+  <units v='INCH'/>
+
+  <!-- Renderer -->
+  <resolution v='0.209122'/>
+  <resolution-mode v='HIGH'/>
+
+  <!-- Workpiece -->
+  <automatic-workpiece v='false'/>
+  <workpiece-max v='(27.1463,120.904,0)'/>
+  <workpiece-min v='(-2.54,-0.381,-12.7)'/>
+
+  <tool_table>
+    <tool length='1' number='0' radius='0.125' shape='CYLINDRICAL' units='INCH'/>
+    <tool length='0.125' number='1' radius='0.125' shape='CONICAL' units='INCH'/>
+  </tool_table>
+</camotics>

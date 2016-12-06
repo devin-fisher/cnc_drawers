@@ -3,6 +3,8 @@ from mecode import G
 
 SAFETY_HEIGHT = 0.5
 OVER_LAP_FACTOR = 0.8
+
+DEFAULT_GROOVE_BIT = .25
 #  Drawing not to scale
 #  (for visualizing)
 #        /\
@@ -13,160 +15,211 @@ OVER_LAP_FACTOR = 0.8
 # |_ _ _ _ _ _ _|
 
 OUTER_CUT_WIDTH_FACTOR  = 1.5
-INNNER_CUT_WIDTH_FACTOR = 0.75
+INNER_CUT_WIDTH_FACTOR = 0.75
 
 OUTER_CUT_DEPTH_FACTOR  = -0.5
-INNNER_CUT_DEPTH_FACTOR = -0.75
+INNER_CUT_DEPTH_FACTOR = -0.75
 
-cut_def = {}
 
 def _valid_units(answer):
     if answer in ['inch', 'cm']:
         return answer
     else:
-        raise Exception("'%s' is not a valid Unit Type"% answer)
-
-def define_flat_cut(g, x_start, y_start, total_movement, par_axis, pos):
-
-    #get read to cut
-    g.move(z=SAFETY_HEIGHT)
-    g.move(x=x_start, y=y_start)
-
-    #large pocket
-    if par_axis == 'x':
-        if pos == "TOP":
-            out_meander_start = 'UL'
-        else:
-            out_meander_start = 'LL'
-
-    if par_axis == 'y':
-        if pos == "TOP":
-            out_meander_start = 'LR'
-        else:
-            out_meander_start = 'LL'
+        raise Exception("'%s' is not a valid Unit Type" % answer)
 
 
-    g.move(z=cut_def['out_depth'])
-    if par_axis=='x':
-        g.meander(total_movement, cut_def['out_cut'], cut_def['over_lap'], start=out_meander_start, orientation=par_axis)
-    else:
-        g.meander(cut_def['out_cut'], total_movement, cut_def['over_lap'], start=out_meander_start, orientation=par_axis)
-
-    #small pocket
-
-    if par_axis == 'x':
-        if pos == "TOP":
-            inner_meander_start = 'L'
-        else:
-            inner_meander_start = 'U'
-
-        if(g.current_position[par_axis] < 0):
-            inner_meander_start = inner_meander_start+'L'
-        else:
-            inner_meander_start = inner_meander_start+'L'
-
-    if par_axis == 'y':
-        if(g.current_position[par_axis] < 0):
-            inner_meander_start = 'L'
-        else:
-            inner_meander_start = 'U'
-
-        if pos == "TOP":
-            inner_meander_start = inner_meander_start + 'L'
-        else:
-            inner_meander_start = inner_meander_start + 'R'
-
-    g.move(z=cut_def['inner_depth'])
-
-    if par_axis=='x':
-        g.meander(total_movement, cut_def['inner_cut'], cut_def['over_lap'], start=inner_meander_start, orientation=par_axis)
-    else:
-        g.meander(cut_def['inner_cut'], total_movement, cut_def['over_lap'], start=inner_meander_start, orientation=par_axis)
-
-    #done cutting
+def define_channel(g, channel, axis, x_start, y_start, length, orientation, bit_diameter):
+    total_movement = length
+    over_lap = bit_diameter*OVER_LAP_FACTOR
+    half_bit_dia = bit_diameter/2.0
+    # Get read to cut
     g.move(z=SAFETY_HEIGHT)
 
-def define_flat_cuts(g, length, width, height, depth, cylindrical_mill_diameter):
-    cut_start = -0.1-cylindrical_mill_diameter
+    adjusted_x_start = x_start
+    adjusted_y_start = y_start
+
+    # bit adjustment
+    if axis == 'X':
+        adjusted_x_start += half_bit_dia
+    elif axis == 'Y':
+        adjusted_y_start += half_bit_dia
+
+    g.move(x=adjusted_x_start, y=adjusted_y_start)
+
+    # Wide Channel
+    g.move(z=channel['wide_channel']['depth'])
+    if axis == 'X':
+        g.meander(channel['wide_channel']['width'] - half_bit_dia, total_movement, over_lap, orientation='y')
+    elif axis == 'Y':
+        g.meander(total_movement, channel['wide_channel']['width'] - half_bit_dia, over_lap, orientation='x')
+
+    g.move(z=SAFETY_HEIGHT)
+
+
+    # Narrow Channel
+    if orientation == 'RIGHT':
+        if axis == 'X':
+            adjusted_x_start = x_start + half_bit_dia + (channel['wide_channel']['width'] - channel['narrow_channel']['width'])
+        elif axis == 'Y':
+            adjusted_y_start = y_start + half_bit_dia + (channel['wide_channel']['width'] - channel['narrow_channel']['width'])
+
+    g.move(x=adjusted_x_start, y=adjusted_y_start)
+    g.move(z=channel['narrow_channel']['depth'])
+    if axis == 'X':
+        g.meander(channel['narrow_channel']['width'] - half_bit_dia, total_movement, over_lap, orientation='y')
+    elif axis == 'Y':
+        g.meander(total_movement, channel['narrow_channel']['width'] - half_bit_dia, over_lap, orientation='x')
+
+    # Done cutting
+    g.move(z=SAFETY_HEIGHT)
+
+
+def define_channels(g, channel, layout, step_down, tool_diameter):
+    non_factor_axis = 0
+
+    x_cut_length = layout['x_cut_length']
+    y_cut_length = layout['y_cut_length']
 
     #tool zero
     g.write("T0 M06")
 
-    # x cuts
-    define_flat_cut(g, cut_start, height+cut_def['tool_half_diameter'], cut_def['x_movement'], 'x', "BOT")
-    define_flat_cut(g, cut_start, height + cut_def['cut_width'] + width + (cut_def['cut_width'] - cut_def['tool_half_diameter']), cut_def['x_movement'], 'x', "TOP")
-
-    # y cuts
-    define_flat_cut(g, height + cut_def['tool_half_diameter'], cut_start, cut_def['y_movement'], 'y', "BOT")
-    define_flat_cut(g, height + cut_def['cut_width'] + length + (cut_def['cut_width'] - cut_def['tool_half_diameter']), cut_start, cut_def['y_movement'], 'y', "TOP")
-
-def define_conical_cut(g, x_start, y_start, total_movement, conical_mill_diameter, par_axis):
-    g.move(z=.5)
-    g.move(x=x_start, y=y_start)
-    g.write("T1 M06")
-    g.move(z=-1*cut_def['full_depth'])
-    if par_axis == 'x':
-        g.move(x=total_movement)
-    else:
-        g.move(y=total_movement)
-
-def define_conical_cuts(g, length, width, height, depth, conical_mill_diameter):
-    cut_start = -0.1-conical_mill_diameter
-    #tool one
-    g.write("T1 M06")
+    define_channel(g, channel, 'X', 0, 0, 5, 'RIGHT', .25)
 
     # x cuts
-    define_conical_cut(g, cut_start, height + depth, cut_def['x_movement'], conical_mill_diameter, 'x')
-    define_conical_cut(g, cut_start, height + cut_def['cut_width'] + width + depth*.5, cut_def['x_movement'], conical_mill_diameter, 'x')
+    # define_channel(g, channel, 'X', layout['x_channel_1'], non_factor_axis, x_cut_length, 'RIGHT', tool_diameter)
+    # define_channel(g, channel, 'X', layout['x_channel_2'], non_factor_axis, x_cut_length, 'LEFT', tool_diameter)
 
     # y cuts
-    define_conical_cut(g, height + depth, cut_start, cut_def['y_movement'], conical_mill_diameter, 'y')
-    define_conical_cut(g, height + cut_def['cut_width'] + length + depth*.5, cut_start, cut_def['y_movement'], conical_mill_diameter, 'y')
+    # define_channel(g, channel, 'Y', non_factor_axis, layout['y_channel_1'], y_cut_length, 'RIGHT', tool_diameter)
+    # define_channel(g, channel, 'Y', non_factor_axis, layout['y_channel_2'], y_cut_length, 'LEFT', tool_diameter)
+
+
+def cal_lateral_movement(value, channel, orientation):
+    if orientation == 'RIGHT':
+        return value + (channel['wide_channel']['width'] - channel['groove']['mid_point'])
+    elif orientation == 'LEFT':
+        return value + channel['groove']['mid_point']
+
+
+def define_vgroove(g, channel, axis, x_start, y_start, length, orientation):
+    g.move(z=SAFETY_HEIGHT)
+    if axis == 'X':
+        x_val = cal_lateral_movement(x_start, channel, orientation)
+        y_val = y_start
+    elif axis == 'Y':
+        x_val = x_start
+        y_val = cal_lateral_movement(y_start, channel, orientation)
+
+    g.move(x=x_val, y=y_val)
+    g.write("T1 M06")
+    g.move(z=-channel['groove']['depth'])
+    if axis == 'X':
+        g.move(y=length)
+        pass
+    elif axis == 'Y':
+        g.move(x=length)
+
+    # Done cutting
+    g.move(z=SAFETY_HEIGHT)
+
+
+def define_vgrooves(g, channel, layout):
+    non_factor_axis = 0
+
+    x_cut_length = layout['x_cut_length']
+    y_cut_length = layout['y_cut_length']
+
+    # tool one
+    g.write("T1 M06")
+    define_vgroove(g, channel, 'X', 0, 0, 5, 'RIGHT')
+
+    # # x cuts
+    # define_vgroove(g, channel, 'X', layout['x_channel_1'], non_factor_axis, x_cut_length, 'RIGHT')
+    # define_vgroove(g, channel, 'X', layout['x_channel_2'], non_factor_axis, x_cut_length, 'LEFT')
+    #
+    # # y cuts
+    # define_vgroove(g, channel, 'Y', non_factor_axis, layout['y_channel_1'], y_cut_length, 'RIGHT')
+    # define_vgroove(g, channel, 'Y', non_factor_axis, layout['y_channel_2'], y_cut_length, 'LEFT')
+
+
+def cal_layout(x_width, y_width, side_height, wide_channel_width):
+    rtn = dict()
+    rtn['non_factor_axis'] = 0
+
+    rtn['x_channel_1'] = side_height
+    rtn['x_channel_2'] = side_height + wide_channel_width + x_width
+    rtn['y_channel_1'] = side_height
+    rtn['y_channel_2'] = side_height + wide_channel_width + y_width
+
+    rtn['x_cut_length'] = 2 * side_height + 2 * wide_channel_width + y_width
+    rtn['y_cut_length'] = 2 * side_height + 2 * wide_channel_width + x_width
+    return rtn
+
+
+def cal_channel(depth, groove_bit_size=DEFAULT_GROOVE_BIT):
+    if depth > 0:
+        depth *= -1
+
+    vd = groove_depth = groove_bit_size/2.0
+    cd = channel_depth = abs(depth) - vd
+
+    rtn = dict()
+    rtn['wide_channel'] = {
+        'width': (cd + 2.0*vd + cd/2.0),
+        'depth': -(cd/2.0)
+    }
+
+    rtn['narrow_channel'] = {
+        'width': (2.0*vd + cd/2.0),
+        'depth': -cd
+    }
+
+    rtn['groove'] = {
+        'mid_point': rtn['narrow_channel']['width'] - vd,
+        'depth': -depth
+    }
+    return rtn
 
 def main():
     # unit = prompt('Unit Type - inch or mm', defaultValue="inch", normfunc=_valid_units, retry=True)
     # unit_plural = unit+"s"
-    # length = prompt_num('Base length in %s' % unit_plural, retry=True)
-    # width = prompt_num('Base width in %s' % unit_plural, retry=True)
-    # height = prompt_num('Side height in %s' % unit_plural, retry=True)
+    # x_width = prompt_num('Base length in %s' % unit_plural, retry=True)
+    # y_width = prompt_num('Base width in %s' % unit_plural, retry=True)
+    # side_height = prompt_num('Side height in %s' % unit_plural, retry=True)
     # depth = prompt_num('Stock depth in %s' % unit_plural, retry=True)
 
-    length = 10
-    width = 10
-    height = 15
-    depth = 2
-    tool_size = .5
+    x_width = 10
+    y_width = 10
+    side_height = 15
+    depth = .5
     cylindrical_mill_diameter = .5
-    conical_mill_diameter = .5
     step_down = .25
 
-    cut_def['cut_width'] = depth*OUTER_CUT_WIDTH_FACTOR
-    cut_def['out_cut'] = (depth*OUTER_CUT_WIDTH_FACTOR)-cylindrical_mill_diameter
-    cut_def['inner_cut'] = (depth*INNNER_CUT_WIDTH_FACTOR)-cylindrical_mill_diameter
-    cut_def['out_depth'] = OUTER_CUT_DEPTH_FACTOR*depth
-    cut_def['inner_depth'] = INNNER_CUT_DEPTH_FACTOR*depth
-    cut_def['full_depth'] = depth
-    cut_def['over_lap'] = cylindrical_mill_diameter*OVER_LAP_FACTOR
-    cut_def['tool_half_diameter'] = cylindrical_mill_diameter / 2
-    cut_def['y_movement'] = 2*max(conical_mill_diameter+.1, cylindrical_mill_diameter+.1) + 2*height + 2*cut_def['cut_width'] + width
-    cut_def['x_movement'] = 2*max(conical_mill_diameter+.1, cylindrical_mill_diameter+.1) + 2*height + 2*cut_def['cut_width'] + length
+    # TODO Should check that parameters can work especially bit size
+
+    channel = cal_channel(depth)
+    print channel
+
+    layout = cal_layout(x_width, y_width, side_height, channel['wide_channel']['width'])
+    print layout
 
     with G(direct_write=False, header=None, setup=False, print_lines=True) as g:
-        #header
+        # header
         g.write("G20 G90 G40")
 
         g.absolute()
         g.setup()
 
         g.feed(30)
-        define_flat_cuts(g, length, width, height, depth, cylindrical_mill_diameter)
-        define_conical_cuts(g, length, width, height, depth, conical_mill_diameter)
+        define_channels(g, channel, layout, step_down, cylindrical_mill_diameter)
+        define_vgrooves(g, channel, layout)
 
-        #end
-        g.move(z=.5)
+        # end
+        g.move(z=SAFETY_HEIGHT)
         g.move(x=0, y=0)
 
-        #view(g)
+        view(g)
+
 
 def view(g):
     import numpy as np
@@ -199,6 +252,17 @@ def view(g):
 
     plt.show()
 
+
+def inkscape_points(channel):
+    print "inkscape coord"
+    print "(0,0)"
+    print "(%s,%s)" % ("0", str(abs(channel['narrow_channel']['depth'])))
+    print "(%s,%s)" % (str(channel['narrow_channel']['width'] - DEFAULT_GROOVE_BIT), str(abs(channel['narrow_channel']['depth'])))
+    print "(%s,%s)" % (abs(channel['groove']['mid_point']), abs(channel['groove']['depth']))
+    print "(%s,%s)" % (str(channel['narrow_channel']['width']), str(abs(channel['narrow_channel']['depth'])))
+    print "(%s,%s)" % (str(channel['narrow_channel']['width']), str(abs(channel['wide_channel']['depth'])))
+    print "(%s,%s)" % (str(channel['wide_channel']['width']), str(abs(channel['wide_channel']['depth'])))
+    print "(%s,%s)" % (str(channel['wide_channel']['width']), "0")
 
 if __name__ == '__main__':
     main()
