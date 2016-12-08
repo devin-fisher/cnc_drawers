@@ -5,6 +5,7 @@ SAFETY_HEIGHT = 0.5
 OVER_LAP_FACTOR = 0.8
 
 DEFAULT_GROOVE_BIT = .25
+BEND_DEPTH = 0.05
 #  Drawing not to scale
 #  (for visualizing)
 #        /\
@@ -14,15 +15,9 @@ DEFAULT_GROOVE_BIT = .25
 # |             |
 # |_ _ _ _ _ _ _|
 
-OUTER_CUT_WIDTH_FACTOR  = 1.5
-INNER_CUT_WIDTH_FACTOR = 0.75
-
-OUTER_CUT_DEPTH_FACTOR  = -0.5
-INNER_CUT_DEPTH_FACTOR = -0.75
-
 
 def _valid_units(answer):
-    if answer in ['inch', 'cm']:
+    if answer in ['in', 'cm']:
         return answer
     else:
         raise Exception("'%s' is not a valid Unit Type" % answer)
@@ -49,9 +44,9 @@ def define_channel(g, channel, axis, x_start, y_start, length, orientation, bit_
     # Wide Channel
     g.move(z=channel['wide_channel']['depth'])
     if axis == 'X':
-        g.meander(channel['wide_channel']['width'] - half_bit_dia, total_movement, over_lap, orientation='y')
+        g.meander(channel['wide_channel']['width'] - bit_diameter, total_movement, over_lap, orientation='y')
     elif axis == 'Y':
-        g.meander(total_movement, channel['wide_channel']['width'] - half_bit_dia, over_lap, orientation='x')
+        g.meander(total_movement, channel['wide_channel']['width'] - bit_diameter, over_lap, orientation='x')
 
     g.move(z=SAFETY_HEIGHT)
 
@@ -66,16 +61,16 @@ def define_channel(g, channel, axis, x_start, y_start, length, orientation, bit_
     g.move(x=adjusted_x_start, y=adjusted_y_start)
     g.move(z=channel['narrow_channel']['depth'])
     if axis == 'X':
-        g.meander(channel['narrow_channel']['width'] - half_bit_dia, total_movement, over_lap, orientation='y')
+        g.meander(channel['narrow_channel']['width'] - bit_diameter, total_movement, over_lap, orientation='y')
     elif axis == 'Y':
-        g.meander(total_movement, channel['narrow_channel']['width'] - half_bit_dia, over_lap, orientation='x')
+        g.meander(total_movement, channel['narrow_channel']['width'] - bit_diameter, over_lap, orientation='x')
 
     # Done cutting
     g.move(z=SAFETY_HEIGHT)
 
 
 def define_channels(g, channel, layout, step_down, tool_diameter):
-    non_factor_axis = 0
+    non_factor_axis = layout['non_factor_axis']
 
     x_cut_length = layout['x_cut_length']
     y_cut_length = layout['y_cut_length']
@@ -83,15 +78,15 @@ def define_channels(g, channel, layout, step_down, tool_diameter):
     #tool zero
     g.write("T0 M06")
 
-    define_channel(g, channel, 'X', 0, 0, 5, 'RIGHT', .25)
+    # define_channel(g, channel, 'X', 0, 0, 5, 'RIGHT', .25)
 
     # x cuts
-    # define_channel(g, channel, 'X', layout['x_channel_1'], non_factor_axis, x_cut_length, 'RIGHT', tool_diameter)
-    # define_channel(g, channel, 'X', layout['x_channel_2'], non_factor_axis, x_cut_length, 'LEFT', tool_diameter)
+    define_channel(g, channel, 'X', layout['x_channel_1'], non_factor_axis, x_cut_length, 'RIGHT', tool_diameter)
+    define_channel(g, channel, 'X', layout['x_channel_2'], non_factor_axis, x_cut_length, 'LEFT', tool_diameter)
 
     # y cuts
-    # define_channel(g, channel, 'Y', non_factor_axis, layout['y_channel_1'], y_cut_length, 'RIGHT', tool_diameter)
-    # define_channel(g, channel, 'Y', non_factor_axis, layout['y_channel_2'], y_cut_length, 'LEFT', tool_diameter)
+    define_channel(g, channel, 'Y', non_factor_axis, layout['y_channel_1'], y_cut_length, 'RIGHT', tool_diameter)
+    define_channel(g, channel, 'Y', non_factor_axis, layout['y_channel_2'], y_cut_length, 'LEFT', tool_diameter)
 
 
 def cal_lateral_movement(value, channel, orientation):
@@ -124,44 +119,50 @@ def define_vgroove(g, channel, axis, x_start, y_start, length, orientation):
 
 
 def define_vgrooves(g, channel, layout):
-    non_factor_axis = 0
+    non_factor_axis = layout['non_factor_axis']
 
     x_cut_length = layout['x_cut_length']
     y_cut_length = layout['y_cut_length']
 
     # tool one
     g.write("T1 M06")
-    define_vgroove(g, channel, 'X', 0, 0, 5, 'RIGHT')
+    # define_vgroove(g, channel, 'X', 0, 0, 5, 'RIGHT')
 
     # # x cuts
-    # define_vgroove(g, channel, 'X', layout['x_channel_1'], non_factor_axis, x_cut_length, 'RIGHT')
-    # define_vgroove(g, channel, 'X', layout['x_channel_2'], non_factor_axis, x_cut_length, 'LEFT')
+    define_vgroove(g, channel, 'X', layout['x_channel_1'], non_factor_axis, x_cut_length, 'RIGHT')
+    define_vgroove(g, channel, 'X', layout['x_channel_2'], non_factor_axis, x_cut_length, 'LEFT')
     #
     # # y cuts
-    # define_vgroove(g, channel, 'Y', non_factor_axis, layout['y_channel_1'], y_cut_length, 'RIGHT')
-    # define_vgroove(g, channel, 'Y', non_factor_axis, layout['y_channel_2'], y_cut_length, 'LEFT')
+    define_vgroove(g, channel, 'Y', non_factor_axis, layout['y_channel_1'], y_cut_length, 'RIGHT')
+    define_vgroove(g, channel, 'Y', non_factor_axis, layout['y_channel_2'], y_cut_length, 'LEFT')
 
 
-def cal_layout(x_width, y_width, side_height, wide_channel_width):
+def cal_layout(x_width, y_width, side_height, channel, bit_diameter):
+    wide_channel_width = channel['wide_channel']['width']
+    wide_channel_depth = channel['wide_channel']['depth']
+
     rtn = dict()
-    rtn['non_factor_axis'] = 0
+
+    rtn['x_stock_length'] = 2 * side_height + 2 * wide_channel_width + (x_width + 2 * wide_channel_depth)
+    rtn['y_stock_length'] = 2 * side_height + 2 * wide_channel_width + (y_width + 2 * wide_channel_depth)
+
+    rtn['non_factor_axis'] = -(bit_diameter * 1.2)
 
     rtn['x_channel_1'] = side_height
-    rtn['x_channel_2'] = side_height + wide_channel_width + x_width
+    rtn['x_channel_2'] = side_height + wide_channel_width + x_width + 2 * wide_channel_depth
     rtn['y_channel_1'] = side_height
-    rtn['y_channel_2'] = side_height + wide_channel_width + y_width
+    rtn['y_channel_2'] = side_height + wide_channel_width + y_width + 2 * wide_channel_depth
 
-    rtn['x_cut_length'] = 2 * side_height + 2 * wide_channel_width + y_width
-    rtn['y_cut_length'] = 2 * side_height + 2 * wide_channel_width + x_width
+    rtn['x_cut_length'] = rtn['x_stock_length'] + 2 * abs(rtn['non_factor_axis'])
+    rtn['y_cut_length'] = rtn['y_stock_length'] + 2 * abs(rtn['non_factor_axis'])
     return rtn
 
 
 def cal_channel(depth, groove_bit_size=DEFAULT_GROOVE_BIT):
-    if depth > 0:
-        depth *= -1
+    effective_depth = -(abs(depth)-BEND_DEPTH)
 
     vd = groove_depth = groove_bit_size/2.0
-    cd = channel_depth = abs(depth) - vd
+    cd = channel_depth = abs(effective_depth) - vd
 
     rtn = dict()
     rtn['wide_channel'] = {
@@ -176,12 +177,13 @@ def cal_channel(depth, groove_bit_size=DEFAULT_GROOVE_BIT):
 
     rtn['groove'] = {
         'mid_point': rtn['narrow_channel']['width'] - vd,
-        'depth': -depth
+        'depth': -effective_depth
     }
     return rtn
 
+
 def main():
-    # unit = prompt('Unit Type - inch or mm', defaultValue="inch", normfunc=_valid_units, retry=True)
+    # unit = prompt('Unit Type - in or mm', defaultValue="in", normfunc=_valid_units, retry=True)
     # unit_plural = unit+"s"
     # x_width = prompt_num('Base length in %s' % unit_plural, retry=True)
     # y_width = prompt_num('Base width in %s' % unit_plural, retry=True)
@@ -190,9 +192,9 @@ def main():
 
     x_width = 10
     y_width = 10
-    side_height = 15
+    side_height = 5
     depth = .5
-    cylindrical_mill_diameter = .5
+    cutting_bit = .25
     step_down = .25
 
     # TODO Should check that parameters can work especially bit size
@@ -200,7 +202,9 @@ def main():
     channel = cal_channel(depth)
     print channel
 
-    layout = cal_layout(x_width, y_width, side_height, channel['wide_channel']['width'])
+    inkscape_points(channel)
+
+    layout = cal_layout(x_width, y_width, side_height, channel, cutting_bit)
     print layout
 
     with G(direct_write=False, header=None, setup=False, print_lines=True) as g:
@@ -211,14 +215,14 @@ def main():
         g.setup()
 
         g.feed(30)
-        define_channels(g, channel, layout, step_down, cylindrical_mill_diameter)
+        define_channels(g, channel, layout, step_down, cutting_bit)
         define_vgrooves(g, channel, layout)
 
         # end
         g.move(z=SAFETY_HEIGHT)
         g.move(x=0, y=0)
 
-        view(g)
+        # view(g)
 
 
 def view(g):
